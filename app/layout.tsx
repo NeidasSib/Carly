@@ -1,4 +1,5 @@
 import { ThemeProvider } from "@/components/theme-provider";
+import QueryProvider from "@/components/providers/query-provider";
 import "./globals.css";
 
 export default function RootLayout({
@@ -9,14 +10,16 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
+        <QueryProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+          </ThemeProvider>
+        </QueryProvider>
       </body>
     </html>
   );

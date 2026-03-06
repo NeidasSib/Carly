@@ -49,18 +49,49 @@ export async function GET(request: Request) {
 
   const page = Number(searchParams.get("page") ?? "1");
   const limit = Number(searchParams.get("limit") ?? "10");
+  const rawQuery = searchParams.get("q") ?? "";
+  const query = rawQuery.trim();
 
   const safePage = Number.isNaN(page) || page < 1 ? 1 : page;
   const safeLimit =
     Number.isNaN(limit) || limit < 1 ? 10 : Math.min(limit, 100);
 
   const skip = (safePage - 1) * safeLimit;
+  const parsedYear = Number(query);
+  const isYearSearch = query.length > 0 && !Number.isNaN(parsedYear);
+
+  const where = {
+    user_id: user.id,
+    ...(query
+      ? {
+          OR: [
+            {
+              name: {
+                contains: query,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              model: {
+                contains: query,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              license_plate: {
+                contains: query,
+                mode: "insensitive" as const,
+              },
+            },
+            ...(isYearSearch ? [{ year: parsedYear }] : []),
+          ],
+        }
+      : {}),
+  };
 
   const [vehicles, total] = await Promise.all([
     prisma.vehicle.findMany({
-      where: {
-        user_id: user.id,
-      },
+      where,
       skip,
       take: safeLimit,
       orderBy: {
@@ -68,9 +99,7 @@ export async function GET(request: Request) {
       },
     }),
     prisma.vehicle.count({
-      where: {
-        user_id: user.id,
-      },
+      where,
     }),
   ]);
 
@@ -97,4 +126,65 @@ export async function GET(request: Request) {
       hasPreviousPage: safePage > 1,
     },
   });
+}
+
+export async function DELETE(request: Request) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const id = (searchParams.get("id") ?? "").trim();
+
+  if (!id) {
+    return NextResponse.json(
+      { error: "Vehicle id is required." },
+      { status: 400 }
+    );
+  }
+
+  const vehicle = await prisma.vehicle.findFirst({
+    where: {
+      id,
+      user_id: user.id,
+    },
+    select: {
+      id: true,
+      image: true,
+    },
+  });
+
+  if (!vehicle) {
+    return NextResponse.json({ error: "Vehicle not found." }, { status: 404 });
+  }
+
+  if (vehicle.image && !vehicle.image.startsWith("http")) {
+    const { error: storageError } = await supabase.storage
+      .from("vehicle-photos")
+      .remove([vehicle.image]);
+
+    if (
+      storageError &&
+      !storageError.message.toLowerCase().includes("not found")
+    ) {
+      return NextResponse.json(
+        { error: `Failed to delete vehicle photo: ${storageError.message}` },
+        { status: 500 }
+      );
+    }
+  }
+
+  await prisma.vehicle.delete({
+    where: {
+      id: vehicle.id,
+    },
+  });
+
+  return NextResponse.json({ success: true });
 }

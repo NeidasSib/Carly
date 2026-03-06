@@ -8,24 +8,63 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImageIcon, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+function getFileExtension(file: File) {
+  const fromName = file.name.match(/\.([a-zA-Z0-9]+)$/)?.[1]?.toLowerCase();
+  if (fromName) return fromName;
+
+  const mimeToExt: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/heic": "heic",
+    "image/heif": "heif",
+  };
+
+  return mimeToExt[file.type] ?? "jpg";
+}
+
+function createObjectId() {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 async function uploadVehiclePhoto(file: File, userId: string): Promise<string> {
   const supabase = createClient();
-  const ext = file.name.split(".").pop() ?? "jpg";
-  const path = `private/${userId}/${crypto.randomUUID()}.${ext}`;
+  const ext = getFileExtension(file);
+  const path = `private/${userId}/${createObjectId()}.${ext}`;
 
   const { error } = await supabase.storage
     .from("vehicle-photos")
-    .upload(path, file, { upsert: false });
+    .upload(path, file, {
+      upsert: false,
+      contentType: file.type || undefined,
+      cacheControl: "3600",
+    });
 
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return path;
+}
+
+async function getResponseErrorMessage(res: Response) {
+  try {
+    const data = await res.json();
+    if (typeof data?.error === "string" && data.error.trim()) {
+      return data.error;
+    }
+    return `Request failed with status ${res.status}.`;
+  } catch {
+    return `Request failed with status ${res.status}.`;
+  }
 }
 
 type props = {
@@ -36,6 +75,7 @@ type props = {
 export default function AddVehicleModal({ onClose, onSuccess }: props) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
 
   const router = useRouter();
   const [form, setForm] = useState({
@@ -56,6 +96,7 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setErrorDetails(null);
 
     const supabase = createClient();
     const {
@@ -75,7 +116,14 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
     try {
       imagePath = await uploadVehiclePhoto(file, user.id);
     } catch (err) {
-      setError("Failed to upload photo. Please try again.");
+      const message =
+        err instanceof Error ? err.message : "Failed to upload photo.";
+      setError("Photo upload failed.");
+      setErrorDetails(
+        `Reason: ${message}\nFile: ${file.name || "unknown"}\nType: ${
+          file.type || "unknown"
+        }\nSize: ${(file.size / (1024 * 1024)).toFixed(2)} MB`
+      );
       return;
     }
 
@@ -92,7 +140,9 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
     });
 
     if (!res.ok) {
-      setError("Failed to add vehicle. Please try again.");
+      const message = await getResponseErrorMessage(res);
+      setError("Failed to add vehicle.");
+      setErrorDetails(message);
       return;
     }
 
@@ -113,9 +163,17 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
 
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">
           {error && (
-            <p className="text-sm text-destructive" role="alert">
-              {error}
-            </p>
+            <div
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              role="alert"
+            >
+              <p className="font-medium">{error}</p>
+              {errorDetails && (
+                <p className="mt-1 whitespace-pre-wrap break-words text-xs text-destructive/90">
+                  {errorDetails}
+                </p>
+              )}
+            </div>
           )}
           <input
             name="name"
@@ -187,8 +245,7 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
               <input
                 id="vehicle-photo"
                 type="file"
-                accept="image/*"
-                required
+                accept="image/*,.heic,.heif"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 className="sr-only"
               />

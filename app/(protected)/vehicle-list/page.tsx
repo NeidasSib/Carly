@@ -1,78 +1,75 @@
 "use client";
 import { Vehicle } from "@/app/generated/prisma/browser";
 import VehicleCard from "@/components/shared/vehicle-card";
-import { useEffect } from "react";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { PlusIcon, Search, SearchIcon } from "lucide-react";
+import { PlusIcon, SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import AddVehicleModal from "@/components/shared/add-vehicle-modal";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
-//NOTE TO MY SELF (NEED TO IMPLEMENT PAGE SELECTION)
-export default function VehicleListView() {
-  //-----
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const limit = 10;
-  const [pagination, setPagination] = useState<{
+type VehiclesResponse = {
+  data: Vehicle[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
     totalPages: number;
     hasNextPage: boolean;
     hasPreviousPage: boolean;
-    total: number;
-  } | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  };
+};
+
+async function fetchVehicles(page: number, limit: number, query: string) {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    q: query,
+  });
+  const res = await fetch(`/api/vehicles?${params.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch vehicles");
+  return (await res.json()) as VehiclesResponse;
+}
+
+export default function VehicleListView() {
+  const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
+  const limit = 10;
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) setLoading(true);
-    });
-    fetch(`/api/vehicles?page=${page}&limit=${limit}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch");
-        return res.json();
-      })
-      .then((json) => {
-        if (!cancelled) {
-          setVehicles(json.data);
-          setPagination(json.pagination);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [page, refreshKey]);
-  //-----
-  const [query, setQuery] = useState("");
+    const timeoutId = setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, 350);
 
-  const filteredVehicles = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return vehicles;
+    return () => clearTimeout(timeoutId);
+  }, [query]);
 
-    return vehicles.filter((v) => {
-      return (
-        v.name.toLowerCase().includes(q) ||
-        v.model.toLowerCase().includes(q) ||
-        v.license_plate.toLowerCase().includes(q) ||
-        String(v.year).includes(q)
-      );
-    });
-  }, [vehicles, query]);
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ["vehicles", page, limit, debouncedQuery],
+    queryFn: () => fetchVehicles(page, limit, debouncedQuery),
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+
+  const vehicles = data?.data ?? [];
+  const pagination = data?.pagination ?? null;
 
   const [addModalOpen, setAddModalOpen] = useState(false);
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <div className="flex h-[calc(100dvh-3.5rem)] flex-col p-4">
         <div
           className="grid items-center pb-5 gap-4"
           style={{ gridTemplateColumns: "minmax(0,1fr) auto" }}
@@ -82,7 +79,10 @@ export default function VehicleListView() {
               <InputGroupInput
                 placeholder="Search..."
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setPage(1);
+                }}
               />
               <InputGroupAddon>
                 <SearchIcon />
@@ -99,24 +99,70 @@ export default function VehicleListView() {
             <PlusIcon />
           </Button>
         </div>
-        <div className="grid gap-6 gap-6 grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]">
-          {filteredVehicles.map((vehicle) => (
-            <VehicleCard
-              key={vehicle.id}
-              name={vehicle.name}
-              model={vehicle.model}
-              year={vehicle.year}
-              image={vehicle.image}
-              licensePlate={vehicle.license_plate}
-            />
-          ))}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid gap-6 gap-6 grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]">
+            {vehicles.map((vehicle) => (
+              <VehicleCard
+                key={vehicle.id}
+                id={vehicle.id}
+                name={vehicle.name}
+                model={vehicle.model}
+                year={vehicle.year}
+                image={vehicle.image}
+                licensePlate={vehicle.license_plate}
+                onDeleted={() =>
+                  queryClient.invalidateQueries({ queryKey: ["vehicles"] })
+                }
+              />
+            ))}
+          </div>
+          {isLoading && (
+            <p className="pt-4 text-sm text-muted-foreground">
+              Loading vehicles...
+            </p>
+          )}
+          {!isLoading && vehicles.length === 0 && (
+            <p className="pt-4 text-sm text-muted-foreground">
+              No vehicles found.
+            </p>
+          )}
+        </div>
+        <div className="mt-4 border-t pt-3">
+          {pagination ? (
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={!pagination.hasPreviousPage || isFetching}
+              >
+                Previous
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Page {pagination.page} of {pagination.totalPages}
+                {isFetching ? " (refreshing...)" : ""}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={!pagination.hasNextPage || isFetching}
+              >
+                Next
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No pages available.</p>
+          )}
         </div>
       </div>
 
       {addModalOpen && (
         <AddVehicleModal
           onClose={() => setAddModalOpen(false)}
-          onSuccess={() => setRefreshKey((k) => k + 1)}
+          onSuccess={() =>
+            queryClient.invalidateQueries({ queryKey: ["vehicles"] })
+          }
         />
       )}
     </>
