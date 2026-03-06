@@ -13,6 +13,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const body = await request.json();
+  if (typeof body.image !== "string" || !body.image.trim()) {
+    return NextResponse.json(
+      { error: "Vehicle photo is required." },
+      { status: 400 }
+    );
+  }
 
   const vehicle = await prisma.vehicle.create({
     data: {
@@ -68,8 +74,20 @@ export async function GET(request: Request) {
     }),
   ]);
 
+  const vehiclesWithImageUrls = await Promise.all(
+    vehicles.map(async (v) => {
+      if (!v.image || v.image.startsWith("http")) {
+        return v;
+      }
+      const { data } = await supabase.storage
+        .from("vehicle-photos")
+        .createSignedUrl(v.image, 3600);
+      return { ...v, image: data?.signedUrl ?? v.image };
+    })
+  );
+
   return NextResponse.json({
-    data: vehicles,
+    data: vehiclesWithImageUrls,
     pagination: {
       page: safePage,
       limit: safeLimit,

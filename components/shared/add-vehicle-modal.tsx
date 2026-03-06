@@ -8,13 +8,35 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { ImageIcon, Upload } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+async function uploadVehiclePhoto(file: File, userId: string): Promise<string> {
+  const supabase = createClient();
+  const ext = file.name.split(".").pop() ?? "jpg";
+  const path = `private/${userId}/${crypto.randomUUID()}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from("vehicle-photos")
+    .upload(path, file, { upsert: false });
+
+  if (error) throw error;
+  return path;
+}
 
 type props = {
   onClose: () => void;
+  onSuccess?: () => void;
 };
 
-export default function AddVehicleModal({ onClose }: props) {
+export default function AddVehicleModal({ onClose, onSuccess }: props) {
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const router = useRouter();
   const [form, setForm] = useState({
     name: "",
@@ -33,7 +55,31 @@ export default function AddVehicleModal({ onClose }: props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/vehicles", {
+    setError(null);
+
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setError("You must be signed in to add a vehicle.");
+      return;
+    }
+
+    if (!file) {
+      setError("Vehicle photo is required.");
+      return;
+    }
+
+    let imagePath = form.image ?? "";
+    try {
+      imagePath = await uploadVehiclePhoto(file, user.id);
+    } catch (err) {
+      setError("Failed to upload photo. Please try again.");
+      return;
+    }
+
+    const res = await fetch("/api/vehicles", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -41,9 +87,16 @@ export default function AddVehicleModal({ onClose }: props) {
       body: JSON.stringify({
         ...form,
         year: Number(form.year),
+        image: imagePath,
       }),
     });
 
+    if (!res.ok) {
+      setError("Failed to add vehicle. Please try again.");
+      return;
+    }
+
+    onSuccess?.();
     onClose();
     router.refresh();
   }
@@ -59,6 +112,11 @@ export default function AddVehicleModal({ onClose }: props) {
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+          {error && (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          )}
           <input
             name="name"
             placeholder="Vehicle Name"
@@ -94,13 +152,48 @@ export default function AddVehicleModal({ onClose }: props) {
             required
           />
 
-          <input
-            name="image"
-            placeholder="Image URL"
-            value={form.image}
-            onChange={handleChange}
-            className="input"
-          />
+          <div className="space-y-2">
+            <Label htmlFor="vehicle-photo">Vehicle photo</Label>
+            <Label
+              htmlFor="vehicle-photo"
+              className={cn(
+                "flex h-9 w-full cursor-pointer items-center gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none",
+                "hover:bg-muted/50 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50",
+                "file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
+                "md:text-sm dark:bg-input/30"
+              )}
+            >
+              <ImageIcon className="size-4 shrink-0 text-muted-foreground" />
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-left",
+                  file ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
+                {file ? file.name : "Choose a photo..."}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="pointer-events-none shrink-0"
+                asChild
+              >
+                <span className="flex items-center gap-1.5">
+                  <Upload className="size-3.5" />
+                  Browse
+                </span>
+              </Button>
+              <input
+                id="vehicle-photo"
+                type="file"
+                accept="image/*"
+                required
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="sr-only"
+              />
+            </Label>
+          </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

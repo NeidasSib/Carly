@@ -29,7 +29,15 @@ export default function VehicleCard({
 }: VehicleCardProps) {
   return (
     <Card className="flex h-full flex-col overflow-hidden pt-0 max-h-105">
-      <Image src={image} alt={name} width={800} height={400} unoptimized />
+      <div className="relative w-full max-h-52 h-52 overflow-hidden">
+        <Image
+          src={image}
+          alt={name}
+          fill
+          className="object-cover"
+          unoptimized
+        />
+      </div>
       <CardHeader>
         <CardTitle className="text-xl font-semibold">{name}</CardTitle>
         <CardDescription>

@@ -12,7 +12,9 @@ import { Button } from "@/components/ui/button";
 import { useMemo, useState } from "react";
 import AddVehicleModal from "@/components/shared/add-vehicle-modal";
 
+//NOTE TO MY SELF (NEED TO IMPLEMENT PAGE SELECTION)
 export default function VehicleListView() {
+  //-----
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -23,6 +25,7 @@ export default function VehicleListView() {
     hasPreviousPage: boolean;
     total: number;
   } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,8 +50,8 @@ export default function VehicleListView() {
     return () => {
       cancelled = true;
     };
-  }, [page]);
-
+  }, [page, refreshKey]);
+  //-----
   const [query, setQuery] = useState("");
 
   const filteredVehicles = useMemo(() => {
@@ -111,7 +114,10 @@ export default function VehicleListView() {
       </div>
 
       {addModalOpen && (
-        <AddVehicleModal onClose={() => setAddModalOpen(false)} />
+        <AddVehicleModal
+          onClose={() => setAddModalOpen(false)}
+          onSuccess={() => setRefreshKey((k) => k + 1)}
+        />
       )}
     </>
   );
