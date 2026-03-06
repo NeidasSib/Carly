@@ -1,0 +1,24 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Vehicle {
+  id           String @id @default(uuid())
+  user_id      String @map("user_Id") @db.Uuid
+
+  name         String
+  model        String
+  year         Int
+  image        String
+  license_plate String
+
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([user_id])
+}
