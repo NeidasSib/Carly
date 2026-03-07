@@ -51,7 +51,12 @@ export const AnyNull = runtime.AnyNull
 
 
 export const ModelName = {
-  Vehicle: 'Vehicle'
+  Profile: 'Profile',
+  Vehicle: 'Vehicle',
+  Company: 'Company',
+  CompanyMember: 'CompanyMember',
+  CompanyInvite: 'CompanyInvite',
+  VehicleAssignment: 'VehicleAssignment'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -70,19 +75,94 @@ export const TransactionIsolationLevel = runtime.makeStrictEnum({
 export type TransactionIsolationLevel = (typeof TransactionIsolationLevel)[keyof typeof TransactionIsolationLevel]
 
 
+export const ProfileScalarFieldEnum = {
+  id: 'id',
+  display_name: 'display_name',
+  avatar_url: 'avatar_url',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+} as const
+
+export type ProfileScalarFieldEnum = (typeof ProfileScalarFieldEnum)[keyof typeof ProfileScalarFieldEnum]
+
+
 export const VehicleScalarFieldEnum = {
   id: 'id',
   user_id: 'user_id',
+  owner_user_id: 'owner_user_id',
+  owner_company_id: 'owner_company_id',
   name: 'name',
   model: 'model',
   year: 'year',
   image: 'image',
   license_plate: 'license_plate',
+  vin: 'vin',
+  fuel_type: 'fuel_type',
+  transmission: 'transmission',
+  insurance_valid_until: 'insurance_valid_until',
+  inspection_valid_until: 'inspection_valid_until',
+  road_tax_valid_until: 'road_tax_valid_until',
   created_at: 'created_at',
   updated_at: 'updated_at'
 } as const
 
 export type VehicleScalarFieldEnum = (typeof VehicleScalarFieldEnum)[keyof typeof VehicleScalarFieldEnum]
+
+
+export const CompanyScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  created_by: 'created_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+} as const
+
+export type CompanyScalarFieldEnum = (typeof CompanyScalarFieldEnum)[keyof typeof CompanyScalarFieldEnum]
+
+
+export const CompanyMemberScalarFieldEnum = {
+  id: 'id',
+  company_id: 'company_id',
+  user_id: 'user_id',
+  role: 'role',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+} as const
+
+export type CompanyMemberScalarFieldEnum = (typeof CompanyMemberScalarFieldEnum)[keyof typeof CompanyMemberScalarFieldEnum]
+
+
+export const CompanyInviteScalarFieldEnum = {
+  id: 'id',
+  company_id: 'company_id',
+  token: 'token',
+  role: 'role',
+  created_by: 'created_by',
+  expires_at: 'expires_at',
+  used_at: 'used_at',
+  used_by_user_id: 'used_by_user_id',
+  revoked_at: 'revoked_at',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+} as const
+
+export type CompanyInviteScalarFieldEnum = (typeof CompanyInviteScalarFieldEnum)[keyof typeof CompanyInviteScalarFieldEnum]
+
+
+export const VehicleAssignmentScalarFieldEnum = {
+  id: 'id',
+  vehicle_id: 'vehicle_id',
+  assigned_to_user_id: 'assigned_to_user_id',
+  start_at: 'start_at',
+  end_at: 'end_at',
+  status: 'status',
+  note: 'note',
+  created_by: 'created_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+} as const
+
+export type VehicleAssignmentScalarFieldEnum = (typeof VehicleAssignmentScalarFieldEnum)[keyof typeof VehicleAssignmentScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -99,4 +179,12 @@ export const QueryMode = {
 } as const
 
 export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
+
+
+export const NullsOrder = {
+  first: 'first',
+  last: 'last'
+} as const
+
+export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
 

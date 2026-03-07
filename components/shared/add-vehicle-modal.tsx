@@ -8,7 +8,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker } from "@/components/ui/date-picker";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImageIcon, Upload } from "lucide-react";
@@ -68,11 +77,16 @@ async function getResponseErrorMessage(res: Response) {
 }
 
 type props = {
+  workspace: string;
   onClose: () => void;
   onSuccess?: () => void;
 };
 
-export default function AddVehicleModal({ onClose, onSuccess }: props) {
+export default function AddVehicleModal({
+  workspace,
+  onClose,
+  onSuccess,
+}: props) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
@@ -84,6 +98,12 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
     year: "",
     license_plate: "",
     image: "",
+    vin: "",
+    fuel_type: "",
+    transmission: "",
+    insurance_valid_until: "",
+    inspection_valid_until: "",
+    road_tax_valid_until: "",
   });
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -127,7 +147,8 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
       return;
     }
 
-    const res = await fetch("/api/vehicles", {
+    const params = new URLSearchParams({ ws: workspace });
+    const res = await fetch(`/api/vehicles?${params.toString()}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -136,6 +157,7 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
         ...form,
         year: Number(form.year),
         image: imagePath,
+        workspace,
       }),
     });
 
@@ -175,40 +197,133 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
               )}
             </div>
           )}
-          <input
+          <Input
             name="name"
             placeholder="Vehicle Name"
             value={form.name}
             onChange={handleChange}
-            className="input"
             required
           />
 
-          <input
+          <Input
             name="model"
             placeholder="Model"
             value={form.model}
             onChange={handleChange}
-            className="input"
           />
 
-          <input
+          <Input
             name="year"
             type="number"
             placeholder="Year"
             value={form.year}
             onChange={handleChange}
-            className="input"
           />
 
-          <input
+          <Input
             name="license_plate"
             placeholder="License Plate"
             value={form.license_plate}
             onChange={handleChange}
-            className="input"
             required
           />
+
+          <Input
+            name="vin"
+            placeholder="VIN (optional)"
+            value={form.vin}
+            onChange={handleChange}
+          />
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="fuel-type">Fuel type</Label>
+              <Select
+                value={form.fuel_type || "none"}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    fuel_type: value === "none" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger id="fuel-type">
+                  <SelectValue placeholder="Select fuel type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not set</SelectItem>
+                  <SelectItem value="petrol">Petrol</SelectItem>
+                  <SelectItem value="diesel">Diesel</SelectItem>
+                  <SelectItem value="hybrid">Hybrid</SelectItem>
+                  <SelectItem value="electric">Electric</SelectItem>
+                  <SelectItem value="lpg">LPG</SelectItem>
+                  <SelectItem value="cng">CNG</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="transmission">Transmission</Label>
+              <Select
+                value={form.transmission || "none"}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    transmission: value === "none" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger id="transmission">
+                  <SelectValue placeholder="Select transmission" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not set</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="automatic">Automatic</SelectItem>
+                  <SelectItem value="cvt">CVT</SelectItem>
+                  <SelectItem value="semi_automatic">Semi automatic</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2">
+              <Label>Insurance valid until</Label>
+              <DatePicker
+                value={form.insurance_valid_until}
+                onChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    insurance_valid_until: value,
+                  }))
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Inspection valid until</Label>
+              <DatePicker
+                value={form.inspection_valid_until}
+                onChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    inspection_valid_until: value,
+                  }))
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Road tax valid until</Label>
+              <DatePicker
+                value={form.road_tax_valid_until}
+                onChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    road_tax_valid_until: value,
+                  }))
+                }
+              />
+            </div>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="vehicle-photo">Vehicle photo</Label>

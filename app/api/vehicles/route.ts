@@ -1,6 +1,31 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { isVehicleInWorkspace, parseWorkspaceParam } from "@/lib/workspace";
+
+function normalizeVin(vin: unknown) {
+  const value = String(vin ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  return value || null;
+}
+
+function parseOptionalDate(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed;
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "P2002"
+  );
+}
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -12,7 +37,26 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const { searchParams } = new URL(request.url);
   const body = await request.json();
+  const workspace = parseWorkspaceParam(
+    searchParams.get("ws") ?? body.workspace ?? "personal"
+  );
+
+  if (workspace.type === "company") {
+    const membership = await prisma.companyMember.findFirst({
+      where: {
+        company_id: workspace.companyId,
+        user_id: user.id,
+      },
+    });
+    if (!membership) {
+      return NextResponse.json(
+        { error: "You do not have access to this company workspace." },
+        { status: 403 }
+      );
+    }
+  }
   if (typeof body.image !== "string" || !body.image.trim()) {
     return NextResponse.json(
       { error: "Vehicle photo is required." },
@@ -20,18 +64,56 @@ export async function POST(request: Request) {
     );
   }
 
-  const vehicle = await prisma.vehicle.create({
-    data: {
-      name: body.name,
-      model: body.model,
-      year: Number(body.year),
-      license_plate: body.license_plate,
-      image: body.image ?? "",
-      user_id: user.id,
-    },
-  });
+  const insuranceValidUntil = parseOptionalDate(body.insurance_valid_until);
+  const inspectionValidUntil = parseOptionalDate(body.inspection_valid_until);
+  const roadTaxValidUntil = parseOptionalDate(body.road_tax_valid_until);
 
-  return NextResponse.json(vehicle);
+  if (
+    insuranceValidUntil === undefined ||
+    inspectionValidUntil === undefined ||
+    roadTaxValidUntil === undefined
+  ) {
+    return NextResponse.json(
+      { error: "One or more date fields are invalid." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const vehicle = await prisma.vehicle.create({
+      data: {
+        name: body.name,
+        model: body.model,
+        year: Number(body.year),
+        license_plate: body.license_plate,
+        image: body.image ?? "",
+        user_id: user.id,
+        owner_user_id: workspace.type === "personal" ? user.id : null,
+        owner_company_id:
+          workspace.type === "company" ? workspace.companyId : null,
+        vin: normalizeVin(body.vin),
+        fuel_type:
+          typeof body.fuel_type === "string" ? body.fuel_type.trim() || null : null,
+        transmission:
+          typeof body.transmission === "string"
+            ? body.transmission.trim() || null
+            : null,
+        insurance_valid_until: insuranceValidUntil,
+        inspection_valid_until: inspectionValidUntil,
+        road_tax_valid_until: roadTaxValidUntil,
+      },
+    });
+
+    return NextResponse.json(vehicle);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json(
+        { error: "VIN must be unique." },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 }
 
 export async function GET(request: Request) {
@@ -51,6 +133,22 @@ export async function GET(request: Request) {
   const limit = Number(searchParams.get("limit") ?? "10");
   const rawQuery = searchParams.get("q") ?? "";
   const query = rawQuery.trim();
+  const workspace = parseWorkspaceParam(searchParams.get("ws"));
+
+  if (workspace.type === "company") {
+    const membership = await prisma.companyMember.findFirst({
+      where: {
+        company_id: workspace.companyId,
+        user_id: user.id,
+      },
+    });
+    if (!membership) {
+      return NextResponse.json(
+        { error: "You do not have access to this company workspace." },
+        { status: 403 }
+      );
+    }
+  }
 
   const safePage = Number.isNaN(page) || page < 1 ? 1 : page;
   const safeLimit =
@@ -60,33 +158,59 @@ export async function GET(request: Request) {
   const parsedYear = Number(query);
   const isYearSearch = query.length > 0 && !Number.isNaN(parsedYear);
 
-  const where = {
-    user_id: user.id,
-    ...(query
+  const ownershipWhere =
+    workspace.type === "company"
       ? {
+          owner_company_id: workspace.companyId,
+        }
+      : {
           OR: [
             {
-              name: {
-                contains: query,
-                mode: "insensitive" as const,
-              },
+              owner_user_id: user.id,
+              owner_company_id: null,
             },
             {
-              model: {
-                contains: query,
-                mode: "insensitive" as const,
-              },
+              owner_user_id: null,
+              owner_company_id: null,
+              user_id: user.id,
             },
-            {
-              license_plate: {
-                contains: query,
-                mode: "insensitive" as const,
-              },
-            },
-            ...(isYearSearch ? [{ year: parsedYear }] : []),
           ],
-        }
-      : {}),
+        };
+
+  const searchWhere = query
+    ? {
+        OR: [
+          {
+            name: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            model: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            license_plate: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            vin: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          },
+          ...(isYearSearch ? [{ year: parsedYear }] : []),
+        ],
+      }
+    : {};
+
+  const where = {
+    AND: [ownershipWhere, ...(query ? [searchWhere] : [])],
   };
 
   const [vehicles, total] = await Promise.all([
@@ -141,6 +265,7 @@ export async function DELETE(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const id = (searchParams.get("id") ?? "").trim();
+  const workspace = parseWorkspaceParam(searchParams.get("ws"));
 
   if (!id) {
     return NextResponse.json(
@@ -149,18 +274,35 @@ export async function DELETE(request: Request) {
     );
   }
 
-  const vehicle = await prisma.vehicle.findFirst({
+  if (workspace.type === "company") {
+    const membership = await prisma.companyMember.findFirst({
+      where: {
+        company_id: workspace.companyId,
+        user_id: user.id,
+      },
+    });
+    if (!membership) {
+      return NextResponse.json(
+        { error: "You do not have access to this company workspace." },
+        { status: 403 }
+      );
+    }
+  }
+
+  const vehicle = await prisma.vehicle.findUnique({
     where: {
       id,
-      user_id: user.id,
     },
     select: {
       id: true,
       image: true,
+      user_id: true,
+      owner_user_id: true,
+      owner_company_id: true,
     },
   });
 
-  if (!vehicle) {
+  if (!vehicle || !isVehicleInWorkspace(vehicle, workspace, user.id)) {
     return NextResponse.json({ error: "Vehicle not found." }, { status: 404 });
   }
 

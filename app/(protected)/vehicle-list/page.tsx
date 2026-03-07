@@ -9,6 +9,7 @@ import {
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import AddVehicleModal from "@/components/shared/add-vehicle-modal";
 import {
   keepPreviousData,
@@ -28,11 +29,17 @@ type VehiclesResponse = {
   };
 };
 
-async function fetchVehicles(page: number, limit: number, query: string) {
+async function fetchVehicles(
+  page: number,
+  limit: number,
+  query: string,
+  workspace: string
+) {
   const params = new URLSearchParams({
     page: String(page),
     limit: String(limit),
     q: query,
+    ws: workspace,
   });
   const res = await fetch(`/api/vehicles?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch vehicles");
@@ -41,6 +48,8 @@ async function fetchVehicles(page: number, limit: number, query: string) {
 
 export default function VehicleListView() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const workspace = searchParams.get("ws") ?? "personal";
   const [page, setPage] = useState(1);
   const limit = 10;
   const [query, setQuery] = useState("");
@@ -55,8 +64,8 @@ export default function VehicleListView() {
   }, [query]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ["vehicles", page, limit, debouncedQuery],
-    queryFn: () => fetchVehicles(page, limit, debouncedQuery),
+    queryKey: ["vehicles", page, limit, debouncedQuery, workspace],
+    queryFn: () => fetchVehicles(page, limit, debouncedQuery, workspace),
     placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -110,6 +119,7 @@ export default function VehicleListView() {
                 year={vehicle.year}
                 image={vehicle.image}
                 licensePlate={vehicle.license_plate}
+                workspace={workspace}
                 onDeleted={() =>
                   queryClient.invalidateQueries({ queryKey: ["vehicles"] })
                 }
@@ -159,6 +169,7 @@ export default function VehicleListView() {
 
       {addModalOpen && (
         <AddVehicleModal
+          workspace={workspace}
           onClose={() => setAddModalOpen(false)}
           onSuccess={() =>
             queryClient.invalidateQueries({ queryKey: ["vehicles"] })

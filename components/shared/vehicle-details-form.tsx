@@ -6,17 +6,32 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 
 type VehicleDetailsFormProps = {
   id: string;
+  workspace: string;
   name: string;
   model: string;
   year: number;
   licensePlate: string;
   imageUrl: string;
+  vin?: string | null;
+  fuelType?: string | null;
+  transmission?: string | null;
+  insuranceValidUntil?: string | null;
+  inspectionValidUntil?: string | null;
+  roadTaxValidUntil?: string | null;
 };
 
 function getFileExtension(file: File) {
@@ -74,11 +89,18 @@ async function getResponseErrorMessage(res: Response) {
 
 export default function VehicleDetailsForm({
   id,
+  workspace,
   name,
   model,
   year,
   licensePlate,
   imageUrl,
+  vin,
+  fuelType,
+  transmission,
+  insuranceValidUntil,
+  inspectionValidUntil,
+  roadTaxValidUntil,
 }: VehicleDetailsFormProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -87,6 +109,12 @@ export default function VehicleDetailsForm({
     model,
     year: String(year),
     license_plate: licensePlate,
+    vin: vin ?? "",
+    fuel_type: fuelType ?? "",
+    transmission: transmission ?? "",
+    insurance_valid_until: insuranceValidUntil ?? "",
+    inspection_valid_until: inspectionValidUntil ?? "",
+    road_tax_valid_until: roadTaxValidUntil ?? "",
   });
   const [previewImage, setPreviewImage] = useState(imageUrl);
   const [file, setFile] = useState<File | null>(null);
@@ -116,7 +144,8 @@ export default function VehicleDetailsForm({
         imagePath = await uploadVehiclePhoto(file, user.id);
       }
 
-      const res = await fetch(`/api/vehicles/${id}`, {
+      const params = new URLSearchParams({ ws: workspace });
+      const res = await fetch(`/api/vehicles/${id}?${params.toString()}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -216,6 +245,104 @@ export default function VehicleDetailsForm({
           }
           required
         />
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="vin">VIN</Label>
+        <Input
+          id="vin"
+          value={form.vin}
+          onChange={(e) => setForm((prev) => ({ ...prev, vin: e.target.value }))}
+        />
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="fuel_type">Fuel type</Label>
+        <Select
+          value={form.fuel_type || "none"}
+          onValueChange={(value) =>
+            setForm((prev) => ({
+              ...prev,
+              fuel_type: value === "none" ? "" : value,
+            }))
+          }
+        >
+          <SelectTrigger id="fuel_type">
+            <SelectValue placeholder="Select fuel type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Not set</SelectItem>
+            <SelectItem value="petrol">Petrol</SelectItem>
+            <SelectItem value="diesel">Diesel</SelectItem>
+            <SelectItem value="hybrid">Hybrid</SelectItem>
+            <SelectItem value="electric">Electric</SelectItem>
+            <SelectItem value="lpg">LPG</SelectItem>
+            <SelectItem value="cng">CNG</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="transmission">Transmission</Label>
+        <Select
+          value={form.transmission || "none"}
+          onValueChange={(value) =>
+            setForm((prev) => ({
+              ...prev,
+              transmission: value === "none" ? "" : value,
+            }))
+          }
+        >
+          <SelectTrigger id="transmission">
+            <SelectValue placeholder="Select transmission" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Not set</SelectItem>
+            <SelectItem value="manual">Manual</SelectItem>
+            <SelectItem value="automatic">Automatic</SelectItem>
+            <SelectItem value="cvt">CVT</SelectItem>
+            <SelectItem value="semi_automatic">Semi automatic</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2">
+          <Label>Insurance valid until</Label>
+          <DatePicker
+            value={form.insurance_valid_until}
+            onChange={(value) =>
+              setForm((prev) => ({
+                ...prev,
+                insurance_valid_until: value,
+              }))
+            }
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label>Inspection valid until</Label>
+          <DatePicker
+            value={form.inspection_valid_until}
+            onChange={(value) =>
+              setForm((prev) => ({
+                ...prev,
+                inspection_valid_until: value,
+              }))
+            }
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label>Road tax valid until</Label>
+          <DatePicker
+            value={form.road_tax_valid_until}
+            onChange={(value) =>
+              setForm((prev) => ({
+                ...prev,
+                road_tax_valid_until: value,
+              }))
+            }
+          />
+        </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

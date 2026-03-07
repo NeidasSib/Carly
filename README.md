@@ -71,6 +71,8 @@ Create a `.env` file with:
 DATABASE_URL=your_postgres_connection_string
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_or_publishable_key
+DEMO_LOGIN_EMAIL=demo_account_email_for_try_demo_button
+DEMO_LOGIN_PASSWORD=demo_account_password_for_try_demo_button
 ```
 
 ## Setup

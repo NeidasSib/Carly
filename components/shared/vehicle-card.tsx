@@ -33,6 +33,7 @@ type VehicleCardProps = {
   year: number;
   image: string;
   licensePlate: string;
+  workspace: string;
   onDeleted?: () => void;
 };
 
@@ -55,6 +56,7 @@ export default function VehicleCard({
   year,
   image,
   licensePlate,
+  workspace,
   onDeleted,
 }: VehicleCardProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -65,7 +67,11 @@ export default function VehicleCard({
     setDeleteError(null);
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/vehicles?id=${encodeURIComponent(id)}`, {
+      const params = new URLSearchParams({
+        id,
+        ws: workspace,
+      });
+      const res = await fetch(`/api/vehicles?${params.toString()}`, {
         method: "DELETE",
       });
 
@@ -141,7 +147,13 @@ export default function VehicleCard({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        <Link href={`/vehicle-list/${id}`}>
+        <Link
+          href={
+            workspace === "personal"
+              ? `/vehicle-list/${id}`
+              : `/vehicle-list/${id}?ws=${encodeURIComponent(workspace)}`
+          }
+        >
           <Button variant="outline" className="rounded-full ">
             View Details
           </Button>
