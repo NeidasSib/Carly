@@ -7,18 +7,117 @@ datasource db {
   provider = "postgresql"
 }
 
+enum CompanyRole {
+  owner
+  admin
+  member
+}
+
+enum AssignmentStatus {
+  scheduled
+  active
+  completed
+  cancelled
+}
+
+model Profile {
+  id           String   @id @db.Uuid
+  display_name String
+  avatar_url   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+}
+
 model Vehicle {
-  id           String @id @default(uuid())
-  user_id      String @map("user_Id") @db.Uuid
+  id                     String   @id @default(uuid())
+  user_id                String   @map("user_Id") @db.Uuid
+  owner_user_id          String?  @db.Uuid
+  owner_company_id       String?  @db.Uuid
 
-  name         String
-  model        String
-  year         Int
-  image        String
-  license_plate String
+  name                   String
+  model                  String
+  year                   Int
+  image                  String
+  license_plate          String
+  vin                    String?  @unique
+  fuel_type              String?
+  transmission           String?
+  insurance_valid_until  DateTime?
+  inspection_valid_until DateTime?
+  road_tax_valid_until   DateTime?
 
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  owner_company          Company? @relation(fields: [owner_company_id], references: [id], onDelete: SetNull)
+  assignments            VehicleAssignment[]
 
   @@index([user_id])
+  @@index([owner_user_id])
+  @@index([owner_company_id])
+}
+
+model Company {
+  id          String          @id @default(uuid()) @db.Uuid
+  name        String
+  created_by  String          @db.Uuid
+  created_at  DateTime        @default(now())
+  updated_at  DateTime        @updatedAt
+
+  members     CompanyMember[]
+  vehicles    Vehicle[]
+  invites     CompanyInvite[]
+
+  @@index([created_by])
+}
+
+model CompanyMember {
+  id          String      @id @default(uuid()) @db.Uuid
+  company_id  String      @db.Uuid
+  user_id     String      @db.Uuid
+  role        CompanyRole @default(member)
+  created_at  DateTime    @default(now())
+  updated_at  DateTime    @updatedAt
+
+  company     Company     @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@unique([company_id, user_id])
+  @@index([user_id])
+}
+
+model CompanyInvite {
+  id               String      @id @default(uuid()) @db.Uuid
+  company_id       String      @db.Uuid
+  token            String      @unique
+  role             CompanyRole @default(member)
+  created_by       String      @db.Uuid
+  expires_at       DateTime
+  used_at          DateTime?
+  used_by_user_id  String?     @db.Uuid
+  revoked_at       DateTime?
+  created_at       DateTime    @default(now())
+  updated_at       DateTime    @updatedAt
+
+  company          Company     @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@index([company_id])
+  @@index([token])
+}
+
+model VehicleAssignment {
+  id                  String           @id @default(uuid()) @db.Uuid
+  vehicle_id          String
+  assigned_to_user_id String           @db.Uuid
+  start_at            DateTime
+  end_at              DateTime
+  status              AssignmentStatus @default(scheduled)
+  note                String?
+  created_by          String           @db.Uuid
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
+
+  vehicle             Vehicle          @relation(fields: [vehicle_id], references: [id], onDelete: Cascade)
+
+  @@index([vehicle_id, start_at, end_at])
+  @@index([assigned_to_user_id])
 }

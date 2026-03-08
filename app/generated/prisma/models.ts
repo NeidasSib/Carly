@@ -8,5 +8,10 @@
  *
  * 🟢 You can import this file directly.
  */
+export type * from './models/Profile'
 export type * from './models/Vehicle'
+export type * from './models/Company'
+export type * from './models/CompanyMember'
+export type * from './models/CompanyInvite'
+export type * from './models/VehicleAssignment'
 export type * from './commonInputTypes'

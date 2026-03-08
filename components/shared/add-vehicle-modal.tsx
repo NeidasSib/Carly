@@ -10,32 +10,86 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker } from "@/components/ui/date-picker";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImageIcon, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+function getFileExtension(file: File) {
+  const fromName = file.name.match(/\.([a-zA-Z0-9]+)$/)?.[1]?.toLowerCase();
+  if (fromName) return fromName;
+
+  const mimeToExt: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/heic": "heic",
+    "image/heif": "heif",
+  };
+
+  return mimeToExt[file.type] ?? "jpg";
+}
+
+function createObjectId() {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 async function uploadVehiclePhoto(file: File, userId: string): Promise<string> {
   const supabase = createClient();
-  const ext = file.name.split(".").pop() ?? "jpg";
-  const path = `private/${userId}/${crypto.randomUUID()}.${ext}`;
+  const ext = getFileExtension(file);
+  const path = `private/${userId}/${createObjectId()}.${ext}`;
 
   const { error } = await supabase.storage
     .from("vehicle-photos")
-    .upload(path, file, { upsert: false });
+    .upload(path, file, {
+      upsert: false,
+      contentType: file.type || undefined,
+      cacheControl: "3600",
+    });
 
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return path;
 }
 
+async function getResponseErrorMessage(res: Response) {
+  try {
+    const data = await res.json();
+    if (typeof data?.error === "string" && data.error.trim()) {
+      return data.error;
+    }
+    return `Request failed with status ${res.status}.`;
+  } catch {
+    return `Request failed with status ${res.status}.`;
+  }
+}
+
 type props = {
+  workspace: string;
   onClose: () => void;
   onSuccess?: () => void;
 };
 
-export default function AddVehicleModal({ onClose, onSuccess }: props) {
+export default function AddVehicleModal({
+  workspace,
+  onClose,
+  onSuccess,
+}: props) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
 
   const router = useRouter();
   const [form, setForm] = useState({
@@ -44,6 +98,12 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
     year: "",
     license_plate: "",
     image: "",
+    vin: "",
+    fuel_type: "",
+    transmission: "",
+    insurance_valid_until: "",
+    inspection_valid_until: "",
+    road_tax_valid_until: "",
   });
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -56,6 +116,7 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setErrorDetails(null);
 
     const supabase = createClient();
     const {
@@ -75,11 +136,19 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
     try {
       imagePath = await uploadVehiclePhoto(file, user.id);
     } catch (err) {
-      setError("Failed to upload photo. Please try again.");
+      const message =
+        err instanceof Error ? err.message : "Failed to upload photo.";
+      setError("Photo upload failed.");
+      setErrorDetails(
+        `Reason: ${message}\nFile: ${file.name || "unknown"}\nType: ${
+          file.type || "unknown"
+        }\nSize: ${(file.size / (1024 * 1024)).toFixed(2)} MB`
+      );
       return;
     }
 
-    const res = await fetch("/api/vehicles", {
+    const params = new URLSearchParams({ ws: workspace });
+    const res = await fetch(`/api/vehicles?${params.toString()}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -88,11 +157,14 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
         ...form,
         year: Number(form.year),
         image: imagePath,
+        workspace,
       }),
     });
 
     if (!res.ok) {
-      setError("Failed to add vehicle. Please try again.");
+      const message = await getResponseErrorMessage(res);
+      setError("Failed to add vehicle.");
+      setErrorDetails(message);
       return;
     }
 
@@ -113,44 +185,145 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
 
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">
           {error && (
-            <p className="text-sm text-destructive" role="alert">
-              {error}
-            </p>
+            <div
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              role="alert"
+            >
+              <p className="font-medium">{error}</p>
+              {errorDetails && (
+                <p className="mt-1 whitespace-pre-wrap break-words text-xs text-destructive/90">
+                  {errorDetails}
+                </p>
+              )}
+            </div>
           )}
-          <input
+          <Input
             name="name"
             placeholder="Vehicle Name"
             value={form.name}
             onChange={handleChange}
-            className="input"
             required
           />
 
-          <input
+          <Input
             name="model"
             placeholder="Model"
             value={form.model}
             onChange={handleChange}
-            className="input"
           />
 
-          <input
+          <Input
             name="year"
             type="number"
             placeholder="Year"
             value={form.year}
             onChange={handleChange}
-            className="input"
           />
 
-          <input
+          <Input
             name="license_plate"
             placeholder="License Plate"
             value={form.license_plate}
             onChange={handleChange}
-            className="input"
             required
           />
+
+          <Input
+            name="vin"
+            placeholder="VIN (optional)"
+            value={form.vin}
+            onChange={handleChange}
+          />
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="fuel-type">Fuel type</Label>
+              <Select
+                value={form.fuel_type || "none"}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    fuel_type: value === "none" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger id="fuel-type">
+                  <SelectValue placeholder="Select fuel type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not set</SelectItem>
+                  <SelectItem value="petrol">Petrol</SelectItem>
+                  <SelectItem value="diesel">Diesel</SelectItem>
+                  <SelectItem value="hybrid">Hybrid</SelectItem>
+                  <SelectItem value="electric">Electric</SelectItem>
+                  <SelectItem value="lpg">LPG</SelectItem>
+                  <SelectItem value="cng">CNG</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="transmission">Transmission</Label>
+              <Select
+                value={form.transmission || "none"}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    transmission: value === "none" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger id="transmission">
+                  <SelectValue placeholder="Select transmission" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not set</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="automatic">Automatic</SelectItem>
+                  <SelectItem value="cvt">CVT</SelectItem>
+                  <SelectItem value="semi_automatic">Semi automatic</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2">
+              <Label>Insurance valid until</Label>
+              <DatePicker
+                value={form.insurance_valid_until}
+                onChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    insurance_valid_until: value,
+                  }))
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Inspection valid until</Label>
+              <DatePicker
+                value={form.inspection_valid_until}
+                onChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    inspection_valid_until: value,
+                  }))
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Road tax valid until</Label>
+              <DatePicker
+                value={form.road_tax_valid_until}
+                onChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    road_tax_valid_until: value,
+                  }))
+                }
+              />
+            </div>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="vehicle-photo">Vehicle photo</Label>
@@ -187,8 +360,7 @@ export default function AddVehicleModal({ onClose, onSuccess }: props) {
               <input
                 id="vehicle-photo"
                 type="file"
-                accept="image/*"
-                required
+                accept="image/*,.heic,.heif"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 className="sr-only"
               />
