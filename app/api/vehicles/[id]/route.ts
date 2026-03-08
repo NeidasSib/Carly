@@ -193,6 +193,10 @@ export async function PATCH(request: Request, context: RouteContext) {
         { status: 409 }
       );
     }
-    throw error;
+    console.error("Vehicle update error:", error);
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    );
   }
 }

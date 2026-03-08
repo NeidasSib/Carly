@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 import prisma from "@/lib/prisma";
+import { isDemoUser } from "@/lib/demo";
 import { createClient } from "@/lib/supabase/server";
 
 const AVATAR_BUCKET = "vehicle-photos";
@@ -118,6 +119,13 @@ export async function DELETE(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (isDemoUser(user.email)) {
+    return NextResponse.json(
+      { error: "Demo accounts cannot be deleted." },
+      { status: 403 }
+    );
   }
 
   const body = await request.json().catch(() => ({}));

@@ -8,6 +8,12 @@ import {
 } from "@/components/ui/input-group";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import AddVehicleModal from "@/components/shared/add-vehicle-modal";
@@ -16,6 +22,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+
+const MAX_VEHICLES_PER_WORKSPACE = 20;
 
 type VehiclesResponse = {
   data: Vehicle[];
@@ -27,6 +35,7 @@ type VehiclesResponse = {
     hasNextPage: boolean;
     hasPreviousPage: boolean;
   };
+  totalInWorkspace?: number;
 };
 
 async function fetchVehicles(
@@ -73,6 +82,8 @@ export default function VehicleListView() {
 
   const vehicles = data?.data ?? [];
   const pagination = data?.pagination ?? null;
+  const totalInWorkspace = data?.totalInWorkspace ?? 0;
+  const atVehicleLimit = totalInWorkspace >= MAX_VEHICLES_PER_WORKSPACE;
 
   const [addModalOpen, setAddModalOpen] = useState(false);
 
@@ -99,14 +110,28 @@ export default function VehicleListView() {
             </InputGroup>
           </div>
 
-          <Button
-            variant="outline"
-            size="icon"
-            className="rounded-full"
-            onClick={() => setAddModalOpen(true)}
-          >
-            <PlusIcon />
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="rounded-full"
+                    onClick={() => setAddModalOpen(true)}
+                    disabled={atVehicleLimit}
+                  >
+                    <PlusIcon />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {atVehicleLimit
+                  ? `Vehicle limit reached (${MAX_VEHICLES_PER_WORKSPACE} per workspace).`
+                  : "Add vehicle"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="grid gap-6 gap-6 grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]">

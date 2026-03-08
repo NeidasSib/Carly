@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
+import { isDemoUser } from "@/lib/demo";
 import { createClient } from "@/lib/supabase/server";
 
 type RouteContext = {
@@ -31,6 +32,13 @@ export async function DELETE(_request: Request, context: RouteContext) {
   if (!requesterMembership || requesterMembership.role !== "owner") {
     return NextResponse.json(
       { error: "Only a company owner can delete the company." },
+      { status: 403 }
+    );
+  }
+
+  if (isDemoUser(user.email)) {
+    return NextResponse.json(
+      { error: "Demo accounts cannot delete companies." },
       { status: 403 }
     );
   }

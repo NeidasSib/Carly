@@ -3,6 +3,8 @@ import prisma from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { isVehicleInWorkspace, parseWorkspaceParam } from "@/lib/workspace";
 
+const MAX_VEHICLES_PER_WORKSPACE = 20;
+
 function normalizeVin(vin: unknown) {
   const value = String(vin ?? "")
     .trim()
@@ -57,6 +59,68 @@ export async function POST(request: Request) {
       );
     }
   }
+
+  const ownershipWhere =
+    workspace.type === "company"
+      ? { owner_company_id: workspace.companyId }
+      : {
+          OR: [
+            {
+              owner_user_id: user.id,
+              owner_company_id: null,
+            },
+            {
+              owner_user_id: null,
+              owner_company_id: null,
+              user_id: user.id,
+            },
+          ],
+        };
+
+  const currentCount = await prisma.vehicle.count({
+    where: ownershipWhere,
+  });
+  if (currentCount >= MAX_VEHICLES_PER_WORKSPACE) {
+    return NextResponse.json(
+      {
+        error: `Vehicle limit reached. You can have up to ${MAX_VEHICLES_PER_WORKSPACE} vehicles in this workspace.`,
+      },
+      { status: 403 }
+    );
+  }
+
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const model = typeof body.model === "string" ? body.model.trim() : "";
+  const licensePlate = typeof body.license_plate === "string"
+    ? body.license_plate.trim()
+    : "";
+  const yearNum = Number(body.year);
+
+  if (!name) {
+    return NextResponse.json(
+      { error: "Vehicle name is required." },
+      { status: 400 }
+    );
+  }
+  if (!model) {
+    return NextResponse.json(
+      { error: "Model is required." },
+      { status: 400 }
+    );
+  }
+  if (!licensePlate) {
+    return NextResponse.json(
+      { error: "License plate is required." },
+      { status: 400 }
+    );
+  }
+  if (Number.isNaN(yearNum) || yearNum < 1900 || yearNum > 2100) {
+    return NextResponse.json(
+      { error: "Year must be between 1900 and 2100." },
+      { status: 400 }
+    );
+  }
+
   if (typeof body.image !== "string" || !body.image.trim()) {
     return NextResponse.json(
       { error: "Vehicle photo is required." },
@@ -82,10 +146,10 @@ export async function POST(request: Request) {
   try {
     const vehicle = await prisma.vehicle.create({
       data: {
-        name: body.name,
-        model: body.model,
-        year: Number(body.year),
-        license_plate: body.license_plate,
+        name,
+        model,
+        year: yearNum,
+        license_plate: licensePlate,
         image: body.image ?? "",
         user_id: user.id,
         owner_user_id: workspace.type === "personal" ? user.id : null,
@@ -112,7 +176,11 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     }
-    throw error;
+    console.error("Vehicle create error:", error);
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    );
   }
 }
 
@@ -213,7 +281,7 @@ export async function GET(request: Request) {
     AND: [ownershipWhere, ...(query ? [searchWhere] : [])],
   };
 
-  const [vehicles, total] = await Promise.all([
+  const [vehicles, total, totalInWorkspace] = await Promise.all([
     prisma.vehicle.findMany({
       where,
       skip,
@@ -224,6 +292,9 @@ export async function GET(request: Request) {
     }),
     prisma.vehicle.count({
       where,
+    }),
+    prisma.vehicle.count({
+      where: ownershipWhere,
     }),
   ]);
 
@@ -249,6 +320,7 @@ export async function GET(request: Request) {
       hasNextPage: safePage * safeLimit < total,
       hasPreviousPage: safePage > 1,
     },
+    totalInWorkspace,
   });
 }
 
